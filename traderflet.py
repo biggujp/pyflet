@@ -56,6 +56,21 @@ def send_order(action):
     else:
         return False, f"Order failed: {result.comment}"
 
+class PriceUpdater(threading.Thread):
+    def __init__(self, update_callback):
+        super().__init__(daemon=True)
+        self.update_callback = update_callback
+        self.running = True
+
+    def run(self):
+        while self.running:
+            self.update_callback()
+            time.sleep(900)  # 15 minutes
+
+    def stop(self):
+        self.running = False
+
+
 class CurrentPriceUpdater(threading.Thread):
     def __init__(self, update_callback):
         super().__init__(daemon=True)
