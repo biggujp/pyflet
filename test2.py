@@ -208,30 +208,70 @@ class MT5FletApp:
                 self.update_ui()
                 time.sleep(10)
                 continue
+
             rates5 = get_rates("M5", 100)
             rates15 = get_rates("M15", 100)
             if not rates5.empty and not rates15.empty:
                 ema20 = calc_ema(rates5, 20)
                 ema50 = calc_ema(rates5, 50)
                 close = rates5['close'].iloc[-1]
+                prev_close = rates5['close'].iloc[-2]
                 high = rates5['high'].iloc[-2]
                 low = rates5['low'].iloc[-2]
+                prev_ema20 = ema20.iloc[-2]
+                prev_ema50 = ema50.iloc[-2]
                 rsi = calc_rsi(rates15, 14).iloc[-1]
-                tick = mt5.symbol_info_tick(SYMBOL)
-                if ema20.iloc[-1] > ema50.iloc[-1] and ema20.iloc[-2] <= ema50.iloc[-2] and rsi > 50:
+
+                # Buy condition: close crossup ema50 or ema20 crossup ema50 and RSI trend up
+                crossup_close_ema50 = prev_close <= prev_ema50 and close > ema50.iloc[-1]
+                crossup_ema20_ema50 = prev_ema20 <= prev_ema50 and ema20.iloc[-1] > ema50.iloc[-1]
+                if (crossup_close_ema50 or crossup_ema20_ema50) and rsi > 50:
                     price = close
-                    sl = ema20.iloc[-1] - 50
+                    sl = ema50.iloc[-1] - 10  # SL just below EMA50
                     tp = high
-                    result = send_order("buy", price, sl, tp)
+                    request = {
+                        "action": mt5.TRADE_ACTION_PENDING,
+                        "symbol": SYMBOL,
+                        "volume": LOT,
+                        "type": mt5.ORDER_TYPE_BUY_LIMIT,
+                        "price": price,
+                        "sl": sl,
+                        "tp": tp,
+                        "deviation": 20,
+                        "magic": 234000,
+                        "comment": "FletBot Auto Buy",
+                        "type_time": mt5.ORDER_TIME_GTC,
+                        "type_filling": mt5.ORDER_FILLING_IOC,
+                    }
+                    result = mt5.order_send(request)
                     with self.lock:
-                        self.trade_log.append(f"{datetime.now()} AUTO BUY @ {price} SL:{sl} TP:{tp} Result:{result.retcode}")
-                elif ema20.iloc[-1] < ema50.iloc[-1] and ema20.iloc[-2] >= ema50.iloc[-2] and rsi < 50:
+                        self.trade_log.append(f"{datetime.now()} AUTO BUY_LIMIT @ {price} SL:{sl} TP:{tp} Result:{result.retcode}")
+
+                # Sell condition: close crossdown ema50 or ema20 crossdown ema50 and RSI trend down
+                crossdown_close_ema50 = prev_close >= prev_ema50 and close < ema50.iloc[-1]
+                crossdown_ema20_ema50 = prev_ema20 >= prev_ema50 and ema20.iloc[-1] < ema50.iloc[-1]
+                if (crossdown_close_ema50 or crossdown_ema20_ema50) and rsi < 50:
                     price = close
-                    sl = ema50.iloc[-1] + 50
+                    sl = ema50.iloc[-1] + 10  # SL just above EMA50
                     tp = low
-                    result = send_order("sell", price, sl, tp)
+                    request = {
+                        "action": mt5.TRADE_ACTION_PENDING,
+                        "symbol": SYMBOL,
+                        "volume": LOT,
+                        "type": mt5.ORDER_TYPE_SELL_LIMIT,
+                        "price": price,
+                        "sl": sl,
+                        "tp": tp,
+                        "deviation": 20,
+                        "magic": 234000,
+                        "comment": "FletBot Auto Sell",
+                        "type_time": mt5.ORDER_TIME_GTC,
+                        "type_filling": mt5.ORDER_FILLING_IOC,
+                    }
+                    result = mt5.order_send(request)
                     with self.lock:
-                        self.trade_log.append(f"{datetime.now()} AUTO SELL @ {price} SL:{sl} TP:{tp} Result:{result.retcode}")
+                        self.trade_log.append(f"{datetime.now()} AUTO SELL_LIMIT @ {price} SL:{sl} TP:{tp} Result:{result.retcode}")
+
             self.update_ui()
             time.sleep(10)
 
